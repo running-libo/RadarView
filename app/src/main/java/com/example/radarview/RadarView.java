@@ -2,14 +2,12 @@ package com.example.radarview;
 
 import android.content.Context;
 import android.graphics.Canvas;
+import android.graphics.DashPathEffect;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.util.AttributeSet;
 import android.view.View;
-
 import androidx.annotation.Nullable;
-
-import java.util.ArrayList;
 
 /**
  * create by libo
@@ -22,20 +20,23 @@ public class RadarView extends View {
      */
     private Paint netPaint;
     /**
-     * 中心点坐标
+     * 虚线画笔
+     */
+    private Paint dashPaint;
+    /** 文字paint */
+    private Paint textPaint;
+    /**
+     * 中心点横坐标
      */
     private float centerX;
+    /**
+     * 中心点纵坐标
+     */
     private float centerY;
     /**
      * 多边形的半径长度
      */
     private int radius;
-    /**
-     * 绘制正多边形边数
-     */
-    private int sideCount = 7;
-    /** 存储正多边形每个顶点坐标 */
-    private ArrayList<Point> points = new ArrayList<>();
     /**
      * 多边形的层级数
      */
@@ -51,8 +52,9 @@ public class RadarView extends View {
     /**
      * 中心点到各个顶点的path
      */
-    private Path centerPath;
-
+    private Path dashPath;
+    /** 每个角标题 */
+    private String[] titleArray;
 
     public RadarView(Context context) {
         super(context);
@@ -69,32 +71,48 @@ public class RadarView extends View {
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
 
         int width = getMeasuredWidth();
+        setMeasuredDimension(width, width);
+
         centerX = getLeft() + width / 2;
         centerY = getTop() + width / 2;
 
         radius = width / 12;
 
-        setMeasuredDimension(width, width);
     }
 
     private void init() {
+        //网格线paint
         netPaint = new Paint();
         netPaint.setColor(getResources().getColor(R.color.colorBlack));
         netPaint.setAntiAlias(true);
         netPaint.setStyle(Paint.Style.STROKE);
         netPaint.setStrokeWidth(3);
 
+        //虚线paint
+        dashPaint = new Paint();
+        dashPaint.setColor(getResources().getColor(R.color.colorBlack));
+        dashPaint.setAntiAlias(true);
+        dashPaint.setStyle(Paint.Style.STROKE);
+        dashPaint.setStrokeWidth(3);
+        dashPaint.setPathEffect(new DashPathEffect(new float[]{10, 10}, 0)); //绘制长度为10的虚线
+
+        //文字paint
+        textPaint = new Paint();
+        textPaint.setColor(getResources().getColor(R.color.black));
+        textPaint.setTextSize(50);
+
         netPath = new Path();
-        centerPath = new Path();
+        dashPath = new Path();
     }
 
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
 
-        perAngle = (double) 2 * Math.PI / sideCount;  //每个顶点到中心之间夹角弧度
+        perAngle = (double) 2 * Math.PI / titleArray.length;  //每个顶点到中心之间夹角弧度
 
         netPath.reset();
+        dashPath.reset();
 
         //规律改变半径绘制4个多边形
         int curRadius = radius;
@@ -114,7 +132,12 @@ public class RadarView extends View {
         //起点从Y轴正上方开始
         double startAngle = 0;
 
-        for (int i = 0; i <= sideCount; i++) {
+        if (layer == layerCount - 1) {
+            dashPath.moveTo(centerX, centerY);
+        }
+
+        for (int i = 0; i < titleArray.length; i++) {
+            //每个顶点的坐标
             float x = (float) (centerX + radius * Math.sin(startAngle));
             float y = (float) (centerY - radius * Math.cos(startAngle));
 
@@ -125,38 +148,28 @@ public class RadarView extends View {
                 netPath.lineTo(x, y);
             }
 
-            if (layer == layerCount-1) {
+            //最外层多边形
+            if (layer == layerCount - 1) {
                 //最外层多边形需要绘制顶点与中心连线
-                centerPath.moveTo(centerX, centerY);
+                dashPath.lineTo(x, y);
+                dashPath.moveTo(centerX, centerY);
+
+                canvas.drawText(titleArray[i], x, y, textPaint);
             }
 
             startAngle += perAngle;
         }
 
-        canvas.drawPath(netPath, netPaint);
+        netPath.close();
+
+        canvas.drawPath(netPath, netPaint);  //画网格
+        canvas.drawPath(dashPath, dashPaint);  //画虚线
     }
 
-    /**
-     * 重设边的数量
-     *
-     * @param sideCount
-     */
-    public void setSideCount(int sideCount) {
-        this.sideCount = sideCount;
+    public void setTitleArray(String[] titleArray) {
+        this.titleArray = titleArray;
+
         invalidate();
-    }
-
-    /**
-     * 记录每个顶点的坐标
-     */
-    class Point {
-        private float x;
-        private float y;
-
-        public Point(float x, float y) {
-            this.x = x;
-            this.y = y;
-        }
     }
 
 }
