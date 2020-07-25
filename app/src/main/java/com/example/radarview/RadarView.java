@@ -5,6 +5,7 @@ import android.graphics.Canvas;
 import android.graphics.DashPathEffect;
 import android.graphics.Paint;
 import android.graphics.Path;
+import android.graphics.Rect;
 import android.util.AttributeSet;
 import android.view.View;
 import androidx.annotation.Nullable;
@@ -23,8 +24,14 @@ public class RadarView extends View {
      * 虚线画笔
      */
     private Paint dashPaint;
-    /** 文字paint */
+    /**
+     * 文字paint
+     */
     private Paint textPaint;
+    /**
+     * 面积区域paint
+     */
+    private Paint regionPaint;
     /**
      * 中心点横坐标
      */
@@ -53,8 +60,18 @@ public class RadarView extends View {
      * 中心点到各个顶点的path
      */
     private Path dashPath;
-    /** 每个角标题 */
+    /**
+     * 区域path
+     */
+    private Path regionPath;
+    /**
+     * 每个角标题
+     */
     private String[] titleArray;
+    /**
+     * 每个角分数值
+     */
+    private int[] scoreArray;
 
     public RadarView(Context context) {
         super(context);
@@ -78,6 +95,8 @@ public class RadarView extends View {
 
         radius = width / 12;
 
+        perAngle = degree2Radian();
+
     }
 
     private void init() {
@@ -98,29 +117,39 @@ public class RadarView extends View {
 
         //文字paint
         textPaint = new Paint();
-        textPaint.setColor(getResources().getColor(R.color.black));
+        textPaint.setColor(getResources().getColor(R.color.yellow));
         textPaint.setTextSize(50);
+
+        //区域paint
+        regionPaint = new Paint();
+        regionPaint.setColor(getResources().getColor(R.color.colorAccent));
+        regionPaint.setAlpha(150);
 
         netPath = new Path();
         dashPath = new Path();
+        regionPath = new Path();
     }
 
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
 
-        perAngle = (double) 2 * Math.PI / titleArray.length;  //每个顶点到中心之间夹角弧度
-
-        netPath.reset();
-        dashPath.reset();
-
-        //规律改变半径绘制4个多边形
+        //规律改变半径绘制多层多边形
         int curRadius = radius;
         for (int i = 0; i < layerCount; i++) {
             drawPolygon(canvas, curRadius, i);
             curRadius += radius;
         }
 
+    }
+
+    /**
+     * 角度转弧度
+     *
+     * @return
+     */
+    private double degree2Radian() {
+        return (double) 2 * Math.PI / titleArray.length;
     }
 
     /**
@@ -134,27 +163,28 @@ public class RadarView extends View {
 
         if (layer == layerCount - 1) {
             dashPath.moveTo(centerX, centerY);
+
+            drawText(canvas, radius);
+
+            drawRegion(canvas, radius);
         }
 
         for (int i = 0; i < titleArray.length; i++) {
             //每个顶点的坐标
-            float x = (float) (centerX + radius * Math.sin(startAngle));
-            float y = (float) (centerY - radius * Math.cos(startAngle));
+            Point point = createPoint(radius, startAngle);
 
             //path的连线
             if (i == 0) {
-                netPath.moveTo(x, y);
+                netPath.moveTo(point.x, point.y);
             } else {
-                netPath.lineTo(x, y);
+                netPath.lineTo(point.x, point.y);
             }
 
             //最外层多边形
             if (layer == layerCount - 1) {
                 //最外层多边形需要绘制顶点与中心连线
-                dashPath.lineTo(x, y);
+                dashPath.lineTo(point.x, point.y);
                 dashPath.moveTo(centerX, centerY);
-
-                canvas.drawText(titleArray[i], x, y, textPaint);
             }
 
             startAngle += perAngle;
@@ -166,10 +196,90 @@ public class RadarView extends View {
         canvas.drawPath(dashPath, dashPaint);  //画虚线
     }
 
+    /**
+     * 绘制每个角的文本，根据顶点在在坐标系象限的关系偏移
+     */
+    private void drawText(Canvas canvas, float radius) {
+        double startAngle = 0;
+        for (int i = 0; i < titleArray.length; i++) {
+            //绘制每个顶点文字，需要加大半径防止与网重叠
+            Point point = createPoint(radius + 25, startAngle);
+
+            Rect rect = new Rect();
+            textPaint.getTextBounds(titleArray[i], 0, titleArray[i].length(), rect);
+
+            if (point.x == centerX) {  //在Y轴上的顶点，需左移一半
+                point.x -= rect.width()/2; //正上方点偏移
+
+                if (point.y > centerY) {
+                    point.y += rect.height();  //正下方点偏移
+                }
+            } else if (point.x < centerX) {
+                point.x -= rect.width();  //左上方点偏移
+                if (point.y > centerY) {
+                    point.y += rect.height()/2;  //左下方点偏移
+                }
+            } else if (point.x > centerX) {
+                if (point.y > centerY) {
+                    point.y += rect.height()/2;
+                }
+            }
+
+            //绘制顶点文字
+            canvas.drawText(titleArray[i], point.x, point.y, textPaint);
+
+            startAngle += perAngle;
+        }
+    }
+
+    /**
+     * 绘制面积区域
+     * @param canvas
+     * @param radius
+     */
+    private void drawRegion(Canvas canvas, float radius) {
+        float startAngle = 0;
+        for (int i = 0; i < titleArray.length; i++) {
+            Point point = createPoint(radius*scoreArray[i]/100, startAngle);
+
+            //path的连线
+            if (i == 0) {
+                regionPath.moveTo(point.x, point.y);
+            } else {
+                regionPath.lineTo(point.x, point.y);
+            }
+
+            startAngle += perAngle;
+        }
+
+        regionPath.close();
+
+        canvas.drawPath(regionPath, regionPaint);
+    }
+
     public void setTitleArray(String[] titleArray) {
         this.titleArray = titleArray;
+    }
 
+    public void setScoreArray(int[] scoreArray) {
+        this.scoreArray = scoreArray;
         invalidate();
+    }
+
+    private Point createPoint(float radius, double angle) {
+        float x = (float) (centerX + radius * Math.sin(angle));
+        float y = (float) (centerY - radius * Math.cos(angle));
+        return new Point(x, y);
+    }
+
+    class Point {
+        float x;
+        float y;
+
+        public Point(float x, float y) {
+            this.x = x;
+            this.y = y;
+        }
     }
 
 }
